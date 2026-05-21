@@ -26,6 +26,7 @@ const classroomPhotoLabel = document.getElementById("classroom-photo-label");
 const markStatus = document.getElementById("mark-status");
 const markResult = document.getElementById("mark-result");
 const markedPhotoPreview = document.getElementById("marked-photo-preview");
+const markedPhotoLink = document.getElementById("marked-photo-link");
 const recognizedList = document.getElementById("recognized-list");
 const attendanceLogList = document.getElementById("attendance-log-list");
 const rosterList = document.getElementById("roster-list");
@@ -366,7 +367,26 @@ function renderMarkedPhoto(url) {
   }
 
   markResult.classList.remove("hidden");
-  markedPhotoPreview.src = url;
+  markedPhotoLink.href = url;
+  markedPhotoPreview.removeAttribute("src");
+
+  fetch(url)
+    .then((response) => {
+      if (!response.ok) {
+        throw new Error(`Unable to load annotated photo (${response.status})`);
+      }
+      return response.blob();
+    })
+    .then((blob) => {
+      const objectUrl = URL.createObjectURL(blob);
+      markedPhotoPreview.onload = () => URL.revokeObjectURL(objectUrl);
+      markedPhotoPreview.onerror = () => URL.revokeObjectURL(objectUrl);
+      markedPhotoPreview.src = objectUrl;
+    })
+    .catch((error) => {
+      console.error(error);
+      markedPhotoPreview.alt = "Annotated photo could not be loaded. Use the link to open it directly.";
+    });
 }
 
 function renderRecognizedFaces(recognized, unknownFaces) {

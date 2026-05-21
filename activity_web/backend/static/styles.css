@@ -225,6 +225,23 @@ h1 {
   background: #000;
 }
 
+.marked-photo-shell {
+  display: grid;
+  gap: 10px;
+}
+
+.marked-photo-link {
+  display: inline-flex;
+  justify-content: center;
+  width: fit-content;
+  color: var(--accent-strong);
+  text-decoration: none;
+  font-weight: 700;
+  padding: 10px 14px;
+  border-radius: 999px;
+  background: rgba(13, 110, 253, 0.08);
+}
+
 .upload-form {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
