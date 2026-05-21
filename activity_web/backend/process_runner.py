@@ -9,7 +9,9 @@ from pathlib import Path
 
 from .job_utils import (
     build_process_console_output,
+    process_job_log_path,
     process_job_dir,
+    tail_job_log,
     update_process_job_status,
     write_process_job_status,
 )
@@ -28,15 +30,20 @@ PROGRESS_PATTERN = re.compile(r"Progress:\s*\[(?P<bar>[#\-\?]+)\]\s*(?P<current>
 
 
 class ProgressCapture(io.TextIOBase):
-    def __init__(self, job_id: str):
+    def __init__(self, job_id: str, log_handle):
         super().__init__()
         self.job_id = job_id
+        self.log_handle = log_handle
         self.buffer = ""
+        self.tail_text = ""
         self.last_progress_key: tuple[int, int, float] | None = None
 
     def write(self, text: str) -> int:
         if not text:
             return 0
+        self.log_handle.write(text)
+        self.log_handle.flush()
+        self.tail_text = (self.tail_text + text)[-8000:]
         self.buffer += text
         self._flush_progress_matches()
         return len(text)
@@ -65,6 +72,7 @@ class ProgressCapture(io.TextIOBase):
                     "total_frames": total,
                     "percent": percent,
                 },
+                log_tail=self.tail_text,
             )
 
         self.buffer = ""
@@ -102,9 +110,12 @@ def main() -> None:
     try:
         write_process_job_status(job_id, "running")
         pipeline = get_pipeline()
-        progress_capture = ProgressCapture(job_id)
-        with contextlib.redirect_stdout(progress_capture), contextlib.redirect_stderr(progress_capture):
-            result = pipeline.process_video(video_path=input_path, output_dir=output_path, annotate=True)
+        log_path = process_job_log_path(job_id)
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        with log_path.open("a", encoding="utf-8") as log_handle:
+            progress_capture = ProgressCapture(job_id, log_handle)
+            with contextlib.redirect_stdout(progress_capture), contextlib.redirect_stderr(progress_capture):
+                result = pipeline.process_video(video_path=input_path, output_dir=output_path, annotate=True)
 
         summary_path = Path(result["summary_path"])
         csv_path = Path(result["csv_path"])
@@ -117,6 +128,7 @@ def main() -> None:
             "completed",
             summary=summary,
             console_output=build_process_console_output(summary, result),
+            log_tail=tail_job_log(job_id),
             progress={
                 "current_frame": summary.get("total_frames", 0),
                 "total_frames": summary.get("total_frames", 0),
@@ -136,7 +148,7 @@ def main() -> None:
             clips=clip_entries,
         )
     except Exception as exc:
-        write_process_job_status(job_id, "failed", error=str(exc))
+        write_process_job_status(job_id, "failed", error=str(exc), log_tail=tail_job_log(job_id))
 
 
 if __name__ == "__main__":

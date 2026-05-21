@@ -15,6 +15,10 @@ def process_job_status_path(job_id: str) -> Path:
     return process_job_dir(job_id) / "job_status.json"
 
 
+def process_job_log_path(job_id: str) -> Path:
+    return process_job_dir(job_id) / "job.log"
+
+
 def now_iso() -> str:
     return datetime.now().isoformat(timespec="seconds")
 
@@ -62,3 +66,14 @@ def build_process_console_output(summary: dict, result: dict) -> str:
     if result.get("annotated_video"):
         lines.append(f"Saved annotated video: {result['annotated_video']}")
     return "\n".join(lines)
+
+
+def tail_job_log(job_id: str, max_lines: int = 120) -> str:
+    log_path = process_job_log_path(job_id)
+    if not log_path.exists():
+        return ""
+    try:
+        lines = log_path.read_text(errors="replace").splitlines()
+    except Exception:
+        return ""
+    return "\n".join(lines[-max_lines:])

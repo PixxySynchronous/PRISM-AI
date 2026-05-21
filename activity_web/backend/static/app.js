@@ -251,6 +251,7 @@ async function waitForProcessJob(statusUrl) {
     if (data.status === "queued" || data.status === "running") {
       statusBox.textContent = data.status === "queued" ? "Video job queued. Processing will start shortly..." : "Processing video. This can take a while...";
       renderActivityProgress(data.progress || null);
+      renderProcessOutput(data.log_tail || data.console_output || "");
       await delay(PROCESS_POLL_INTERVAL_MS);
       continue;
     }
