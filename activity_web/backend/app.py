@@ -64,15 +64,18 @@ def health():
 
 @app.get("/api/attendance/status")
 def attendance_status():
+    import importlib.util
     from .attendance_service import get_attendance_service
 
     service = get_attendance_service()
-    try:
-        # attempt to initialize the face model without processing any media
-        fa = service._get_face_analysis()
-        return jsonify({"ok": True, "model_ready": True}), 200
-    except Exception as exc:  # pragma: no cover - runtime/runtime-only
-        return jsonify({"ok": False, "model_ready": False, "error": str(exc)}), 200
+    # Check whether heavy packages are available without importing them directly
+    pkg_check = {
+        "cv2": bool(importlib.util.find_spec("cv2")),
+        "insightface": bool(importlib.util.find_spec("insightface")),
+        "onnxruntime": bool(importlib.util.find_spec("onnxruntime")),
+    }
+    students = service.list_students()
+    return jsonify({"ok": True, "model_ready": pkg_check.get("insightface") and pkg_check.get("onnxruntime"), "packages": pkg_check, "students_count": len(students)}), 200
 
 
 @app.get("/api/attendance/roster")

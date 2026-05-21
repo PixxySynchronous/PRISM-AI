@@ -8,7 +8,6 @@ from functools import lru_cache
 from pathlib import Path
 import os
 
-import cv2
 import numpy as np
 
 
@@ -71,19 +70,38 @@ class AttendanceService:
         data.setdefault("students", [])
         data.setdefault("attendance", [])
         return data
-        data.setdefault("students", [])
-        data.setdefault("attendance", [])
-        return data
+
+    def _get_face_analysis(self):
+        if self._face_analysis is None:
+            try:
+                from insightface.app import FaceAnalysis
+
+                model_name = os.environ.get("INSIGHTFACE_MODEL_NAME", "buffalo_l")
+                self._face_analysis = FaceAnalysis(name=model_name, providers=["CPUExecutionProvider"])
+                self._face_analysis.prepare(ctx_id=0, det_size=(640, 640), det_thresh=0.5)
+            except MemoryError as mem_err:
+                raise RuntimeError(
+                    "Failed to initialize the face model (out of memory). "
+                    "Consider increasing the instance memory, using a smaller model via the INSIGHTFACE_MODEL_NAME env var, "
+                    "or running the attendance service on a machine with more RAM."
+                ) from mem_err
+            except Exception as exc:
+                raise RuntimeError(f"Failed to initialize the face model: {exc}") from exc
+        return self._face_analysis
 
     def _write_store(self, data: dict) -> None:
         ATTENDANCE_DIR.mkdir(parents=True, exist_ok=True)
         STORE_PATH.write_text(json.dumps(data, indent=2))
 
     def _load_image(self, media_path: Path) -> np.ndarray | None:
+        import cv2
+
         image = cv2.imread(str(media_path))
         return image
 
     def _sample_video_frames(self, media_path: Path) -> list[np.ndarray]:
+        import cv2
+
         capture = cv2.VideoCapture(str(media_path))
         if not capture.isOpened():
             return []
@@ -291,6 +309,8 @@ class AttendanceService:
             raise FileNotFoundError(f"File not found: {media_path}")
 
         suffix = media_path.suffix.lower()
+        import cv2
+
         if suffix in {".jpg", ".jpeg", ".png", ".webp", ".bmp"}:
             image = self._load_image(media_path)
             if image is None:
@@ -339,17 +359,17 @@ class AttendanceService:
                     }
                 )
 
-            cv2.rectangle(marked_frame, (x1, y1), (x2, y2), color, 2)
-            cv2.putText(
-                marked_frame,
-                label,
-                (x1, max(20, y1 - 8)),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.55,
-                color,
-                2,
-                cv2.LINE_AA,
-            )
+                cv2.rectangle(marked_frame, (x1, y1), (x2, y2), color, 2)
+                cv2.putText(
+                    marked_frame,
+                    label,
+                    (x1, max(20, y1 - 8)),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.55,
+                    color,
+                    2,
+                    cv2.LINE_AA,
+                )
 
         store["attendance"] = attendance_log
         self._write_store(store)
