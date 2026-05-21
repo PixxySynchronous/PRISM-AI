@@ -6,6 +6,7 @@ Pillow
 opencv-python-headless
 ultralytics
 insightface
+onnxruntime-cpu
 torch
 torchvision
 
