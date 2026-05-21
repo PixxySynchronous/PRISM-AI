@@ -62,6 +62,19 @@ def health():
     return jsonify({"ok": True})
 
 
+@app.get("/api/attendance/status")
+def attendance_status():
+    from .attendance_service import get_attendance_service
+
+    service = get_attendance_service()
+    try:
+        # attempt to initialize the face model without processing any media
+        fa = service._get_face_analysis()
+        return jsonify({"ok": True, "model_ready": True}), 200
+    except Exception as exc:  # pragma: no cover - runtime/runtime-only
+        return jsonify({"ok": False, "model_ready": False, "error": str(exc)}), 200
+
+
 @app.get("/api/attendance/roster")
 def attendance_roster():
     from .attendance_service import get_attendance_service
