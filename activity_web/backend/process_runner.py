@@ -4,15 +4,20 @@ import json
 import sys
 from pathlib import Path
 
-from .app import (
-    artifact_url,
-    clip_url,
-    _now_iso,
-    _build_process_console_output,
-    _write_process_job_status,
+from .job_utils import (
+    build_process_console_output,
     process_job_dir,
+    write_process_job_status,
 )
 from .pipeline_loader import get_pipeline
+
+
+def artifact_url(job_id: str, kind: str) -> str:
+    return f"/api/jobs/{job_id}/download/{kind}"
+
+
+def clip_url(job_id: str, relative_path: str) -> str:
+    return f"/api/jobs/{job_id}/clips/{relative_path}"
 
 
 def _build_clip_entries(job_id: str, summary: dict, output_path: Path) -> list[dict]:
@@ -45,7 +50,7 @@ def main() -> None:
     output_path = Path(sys.argv[3])
 
     try:
-        _write_process_job_status(job_id, "running")
+        write_process_job_status(job_id, "running")
         pipeline = get_pipeline()
         result = pipeline.process_video(video_path=input_path, output_dir=output_path, annotate=True)
 
@@ -55,11 +60,11 @@ def main() -> None:
         summary = json.loads(summary_path.read_text())
         clip_entries = _build_clip_entries(job_id, summary, output_path)
 
-        _write_process_job_status(
+        write_process_job_status(
             job_id,
             "completed",
             summary=summary,
-            console_output=_build_process_console_output(summary, result),
+            console_output=build_process_console_output(summary, result),
             paths={
                 "summary_json": str(summary_path),
                 "csv": str(csv_path),
@@ -74,7 +79,7 @@ def main() -> None:
             clips=clip_entries,
         )
     except Exception as exc:
-        _write_process_job_status(job_id, "failed", error=str(exc))
+        write_process_job_status(job_id, "failed", error=str(exc))
 
 
 if __name__ == "__main__":

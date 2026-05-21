@@ -4,7 +4,6 @@ import json
 import uuid
 import subprocess
 import sys
-from datetime import datetime
 from pathlib import Path
 
 from flask import Flask, jsonify, render_template, request, send_file
@@ -18,6 +17,13 @@ from .config import (
     ATTENDANCE_DIR,
     ALLOWED_EXTENSIONS,
     ALLOWED_IMAGE_EXTENSIONS,
+)
+from .job_utils import (
+    build_process_console_output,
+    process_job_dir,
+    process_job_status_path,
+    read_process_job_status,
+    write_process_job_status,
 )
 
 app = Flask(
@@ -54,49 +60,6 @@ def clip_url(job_id: str, relative_path: str) -> str:
 
 def attendance_artifact_url(filename: str) -> str:
     return f"/api/attendance/artifacts/{filename}"
-
-
-def process_job_dir(job_id: str) -> Path:
-    return OUTPUT_DIR / job_id
-
-
-def process_job_status_path(job_id: str) -> Path:
-    return process_job_dir(job_id) / "job_status.json"
-
-
-def _now_iso() -> str:
-    return datetime.now().isoformat(timespec="seconds")
-
-
-def _write_process_job_status(job_id: str, status: str, **payload) -> None:
-    job_dir = process_job_dir(job_id)
-    job_dir.mkdir(parents=True, exist_ok=True)
-    status_path = process_job_status_path(job_id)
-    data = {
-        "ok": True,
-        "job_id": job_id,
-        "status": status,
-        "updated_at": _now_iso(),
-        **payload,
-    }
-    status_path.write_text(json.dumps(data, indent=2))
-
-
-def _build_process_console_output(summary: dict, result: dict) -> str:
-    lines = [json.dumps(summary, indent=2), f"Saved summary: {result['summary_path']}", f"Saved CSV: {result['csv_path']}", f"Saved clips: {result['clip_dir']}"]
-    if result.get("annotated_video"):
-        lines.append(f"Saved annotated video: {result['annotated_video']}")
-    return "\n".join(lines)
-
-
-def _read_process_job_status(job_id: str) -> dict | None:
-    status_path = process_job_status_path(job_id)
-    if not status_path.exists():
-        return None
-    try:
-        return json.loads(status_path.read_text())
-    except Exception:
-        return None
 
 
 def _launch_process_job(job_id: str, input_path: Path, output_path: Path) -> None:
@@ -239,7 +202,7 @@ def process_video():
     output_path = OUTPUT_DIR / job_id
 
     uploaded_file.save(input_path)
-    _write_process_job_status(job_id, "queued")
+    write_process_job_status(job_id, "queued")
     _launch_process_job(job_id, input_path, output_path)
 
     return jsonify(
@@ -254,7 +217,7 @@ def process_video():
 
 @app.get("/api/process/<job_id>")
 def process_job_status(job_id: str):
-    job_status = _read_process_job_status(job_id)
+    job_status = read_process_job_status(job_id)
     if job_status is None:
         return jsonify({"ok": False, "error": "Job not found."}), 404
 
