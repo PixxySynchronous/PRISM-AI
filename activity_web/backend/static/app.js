@@ -35,6 +35,7 @@ const attendanceLogList = document.getElementById("attendance-log-list");
 const rosterList = document.getElementById("roster-list");
 const attendanceLogSummary = document.getElementById("attendance-log-summary");
 const rosterProgress = document.getElementById("roster-progress");
+const PROCESS_POLL_INTERVAL_MS = 2000;
 
 function activateTab(tabId) {
   tabButtons.forEach((button) => {
@@ -113,11 +114,8 @@ activityForm.addEventListener("submit", async (event) => {
       throw new Error(data.error || "Processing failed.");
     }
 
-    renderMetrics(data.summary, data.job_id);
-    renderLinks(data.download_urls);
-    renderGroupedStudents(data.clips || []);
-    statusBox.textContent = "Done. Review the summary below.";
-    resultsBox.classList.remove("hidden");
+    statusBox.textContent = "Video job queued. Waiting for the pipeline to finish...";
+    await waitForProcessJob(data.status_url || `/api/process/${encodeURIComponent(data.job_id)}`);
   } catch (error) {
     statusBox.textContent = error.message;
     statusBox.classList.add("error");
@@ -236,6 +234,42 @@ async function refreshAttendanceSummary(progressElement = null) {
   } finally {
     setProgress(progressElement, false);
   }
+}
+
+async function waitForProcessJob(statusUrl) {
+  while (true) {
+    const response = await fetch(statusUrl, { cache: "no-store" });
+    const data = await response.json();
+
+    if (!response.ok || !data.ok) {
+      throw new Error(data.error || "Unable to fetch job status.");
+    }
+
+    if (data.status === "queued" || data.status === "running") {
+      statusBox.textContent = data.status === "queued" ? "Video job queued. Processing will start shortly..." : "Processing video. This can take a while...";
+      await delay(PROCESS_POLL_INTERVAL_MS);
+      continue;
+    }
+
+    if (data.status === "failed") {
+      throw new Error(data.error || "Processing failed.");
+    }
+
+    if (data.status === "completed") {
+      renderMetrics(data.summary, data.job_id);
+      renderLinks(data.download_urls || {});
+      renderGroupedStudents(data.clips || []);
+      statusBox.textContent = "Done. Review the summary below.";
+      resultsBox.classList.remove("hidden");
+      return;
+    }
+
+    throw new Error(`Unknown job status: ${data.status}`);
+  }
+}
+
+function delay(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
 function renderMetrics(summary, jobId) {

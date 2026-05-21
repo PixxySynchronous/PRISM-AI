@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import json
 import uuid
+import threading
+from datetime import datetime
 from pathlib import Path
 
 from flask import Flask, jsonify, render_template, request, send_file
@@ -50,6 +53,89 @@ def clip_url(job_id: str, relative_path: str) -> str:
 
 def attendance_artifact_url(filename: str) -> str:
     return f"/api/attendance/artifacts/{filename}"
+
+
+def process_job_dir(job_id: str) -> Path:
+    return OUTPUT_DIR / job_id
+
+
+def process_job_status_path(job_id: str) -> Path:
+    return process_job_dir(job_id) / "job_status.json"
+
+
+def _now_iso() -> str:
+    return datetime.now().isoformat(timespec="seconds")
+
+
+def _write_process_job_status(job_id: str, status: str, **payload) -> None:
+    job_dir = process_job_dir(job_id)
+    job_dir.mkdir(parents=True, exist_ok=True)
+    status_path = process_job_status_path(job_id)
+    data = {
+        "ok": True,
+        "job_id": job_id,
+        "status": status,
+        "updated_at": _now_iso(),
+        **payload,
+    }
+    status_path.write_text(json.dumps(data, indent=2))
+
+
+def _read_process_job_status(job_id: str) -> dict | None:
+    status_path = process_job_status_path(job_id)
+    if not status_path.exists():
+        return None
+    try:
+        return json.loads(status_path.read_text())
+    except Exception:
+        return None
+
+
+def _run_process_job(job_id: str, input_path: Path, output_path: Path) -> None:
+    from .pipeline_loader import get_pipeline
+
+    try:
+        _write_process_job_status(job_id, "running")
+        pipeline = get_pipeline()
+        result = pipeline.process_video(video_path=input_path, output_dir=output_path, annotate=True)
+
+        summary = result["summary"]
+        job_output = process_job_dir(job_id)
+        clip_entries = []
+        for clip in summary.get("clips", []):
+            clip_path_value = clip.get("clip_path")
+            clip_relative_path = None
+            if clip_path_value:
+                try:
+                    clip_relative_path = str(Path(clip_path_value).resolve().relative_to(job_output.resolve()))
+                except Exception:
+                    clip_relative_path = None
+            clip_entries.append(
+                {
+                    **clip,
+                    "clip_relative_path": clip_relative_path,
+                    "clip_url": clip_url(job_id, clip_relative_path) if clip_relative_path else None,
+                }
+            )
+
+        result_payload = {
+            "summary": summary,
+            "paths": {
+                "summary_json": result["summary_path"],
+                "csv": result["csv_path"],
+                "clip_dir": result["clip_dir"],
+                "annotated_video": result["annotated_video"],
+            },
+            "download_urls": {
+                "summary_json": artifact_url(job_id, "summary"),
+                "csv": artifact_url(job_id, "csv"),
+                "annotated_video": artifact_url(job_id, "annotated"),
+            },
+            "clips": clip_entries,
+        }
+        _write_process_job_status(job_id, "completed", **result_payload)
+    except Exception as exc:
+        _write_process_job_status(job_id, "failed", error=str(exc))
 
 
 @app.get("/")
@@ -167,8 +253,6 @@ def attendance_mark():
 def process_video():
     ensure_runtime_dirs()
 
-    from .pipeline_loader import get_pipeline
-
     uploaded_file = request.files.get("video")
     if uploaded_file is None or not uploaded_file.filename:
         return jsonify({"ok": False, "error": "Upload a video file first."}), 400
@@ -182,49 +266,28 @@ def process_video():
     output_path = OUTPUT_DIR / job_id
 
     uploaded_file.save(input_path)
+    _write_process_job_status(job_id, "queued")
 
-    try:
-        pipeline = get_pipeline()
-        result = pipeline.process_video(video_path=input_path, output_dir=output_path, annotate=True)
-    except Exception as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 500
+    worker = threading.Thread(target=_run_process_job, args=(job_id, input_path, output_path), daemon=True)
+    worker.start()
 
-    summary = result["summary"]
-    job_output = OUTPUT_DIR / job_id
-    clip_entries = []
-    for clip in summary.get("clips", []):
-        clip_path_value = clip.get("clip_path")
-        clip_relative_path = None
-        if clip_path_value:
-            try:
-                clip_relative_path = str(Path(clip_path_value).resolve().relative_to(job_output.resolve()))
-            except Exception:
-                clip_relative_path = None
-        clip_entries.append(
-            {
-                **clip,
-                "clip_relative_path": clip_relative_path,
-                "clip_url": clip_url(job_id, clip_relative_path) if clip_relative_path else None,
-            }
-        )
-    response = {
-        "ok": True,
-        "job_id": job_id,
-        "summary": summary,
-        "paths": {
-            "summary_json": result["summary_path"],
-            "csv": result["csv_path"],
-            "clip_dir": result["clip_dir"],
-            "annotated_video": result["annotated_video"],
-        },
-        "download_urls": {
-            "summary_json": artifact_url(job_id, "summary"),
-            "csv": artifact_url(job_id, "csv"),
-            "annotated_video": artifact_url(job_id, "annotated"),
-        },
-        "clips": clip_entries,
-    }
-    return jsonify(response)
+    return jsonify(
+        {
+            "ok": True,
+            "job_id": job_id,
+            "status": "queued",
+            "status_url": f"/api/process/{job_id}",
+        }
+    ), 202
+
+
+@app.get("/api/process/<job_id>")
+def process_job_status(job_id: str):
+    job_status = _read_process_job_status(job_id)
+    if job_status is None:
+        return jsonify({"ok": False, "error": "Job not found."}), 404
+
+    return jsonify(job_status)
 
 
 @app.get("/api/jobs/<job_id>/download/<kind>")
