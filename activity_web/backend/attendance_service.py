@@ -59,22 +59,19 @@ class AttendanceService:
     def __init__(self) -> None:
         ensure_attendance_dirs()
         self._face_analysis = None
-
-    def _get_face_analysis(self):
-        if self._face_analysis is None:
-            from insightface.app import FaceAnalysis
-
-            self._face_analysis = FaceAnalysis(name="buffalo_l", providers=["CPUExecutionProvider"])
-            self._face_analysis.prepare(ctx_id=0, det_size=(640, 640), det_thresh=0.5)
-        return self._face_analysis
-
-    def _read_store(self) -> dict:
-        if not STORE_PATH.exists():
-            return {"students": [], "attendance": []}
-        try:
-            data = json.loads(STORE_PATH.read_text())
-        except Exception:
-            return {"students": [], "attendance": []}
+            try:
+                from insightface.app import FaceAnalysis
+                model_name = os.environ.get("INSIGHTFACE_MODEL_NAME", "buffalo_l")
+                self._face_analysis = FaceAnalysis(name=model_name, providers=["CPUExecutionProvider"])
+                self._face_analysis.prepare(ctx_id=0, det_size=(640, 640), det_thresh=0.5)
+            except MemoryError as mem_err:
+                raise RuntimeError(
+                    "Failed to initialize the face model (out of memory). "
+                    "Consider increasing the instance memory, using a smaller model via the INSIGHTFACE_MODEL_NAME env var, "
+                    "or running the attendance service on a machine with more RAM."
+                ) from mem_err
+            except Exception as exc:
+                raise RuntimeError(f"Failed to initialize the face model: {exc}") from exc
         data.setdefault("students", [])
         data.setdefault("attendance", [])
         return data
