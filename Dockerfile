@@ -30,4 +30,4 @@ ENV PYTHONPATH=/app
 
 EXPOSE 8080
 
-CMD ["gunicorn", "--bind", "0.0.0.0:8080", "activity_web.backend.app:app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--timeout", "0", "--graceful-timeout", "0", "activity_web.backend.app:app"]
