@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import uuid
-import threading
 import subprocess
 import sys
 from datetime import datetime
@@ -93,70 +92,16 @@ def _read_process_job_status(job_id: str) -> dict | None:
         return None
 
 
-def _run_process_job(job_id: str, input_path: Path, output_path: Path) -> None:
-    from .pipeline_loader import pipeline_script_path
-
-    try:
-        _write_process_job_status(job_id, "running")
-        command = [
-            sys.executable,
-            str(pipeline_script_path()),
-            "--video",
-            str(input_path),
-            "--output-dir",
-            str(output_path),
-        ]
-        completed_process = subprocess.run(command, capture_output=True, text=True)
-        if completed_process.returncode != 0:
-            stderr_text = (completed_process.stderr or "").strip()
-            stdout_text = (completed_process.stdout or "").strip()
-            message = stderr_text or stdout_text or f"Pipeline exited with status {completed_process.returncode}"
-            _write_process_job_status(job_id, "failed", error=message)
-            return
-
-        summary_path = next(output_path.glob("*_summary.json"), None)
-        csv_path = next(output_path.glob("*_per_student_predictions.csv"), None)
-        annotated_path = next(output_path.glob("*_sampled_annotated.mp4"), None)
-        if summary_path is None or not summary_path.exists():
-            raise RuntimeError("Pipeline finished but summary JSON was not created")
-
-        summary = json.loads(summary_path.read_text())
-        job_output = process_job_dir(job_id)
-        clip_entries = []
-        for clip in summary.get("clips", []):
-            clip_path_value = clip.get("clip_path")
-            clip_relative_path = None
-            if clip_path_value:
-                try:
-                    clip_relative_path = str(Path(clip_path_value).resolve().relative_to(job_output.resolve()))
-                except Exception:
-                    clip_relative_path = None
-            clip_entries.append(
-                {
-                    **clip,
-                    "clip_relative_path": clip_relative_path,
-                    "clip_url": clip_url(job_id, clip_relative_path) if clip_relative_path else None,
-                }
-            )
-
-        result_payload = {
-            "summary": summary,
-            "paths": {
-                "summary_json": str(summary_path),
-                "csv": str(csv_path) if csv_path is not None else None,
-                "clip_dir": str(output_path / "classified_clips" / Path(str(summary.get("video_path", ""))).stem),
-                "annotated_video": str(annotated_path) if annotated_path is not None else None,
-            },
-            "download_urls": {
-                "summary_json": artifact_url(job_id, "summary"),
-                "csv": artifact_url(job_id, "csv"),
-                "annotated_video": artifact_url(job_id, "annotated"),
-            },
-            "clips": clip_entries,
-        }
-        _write_process_job_status(job_id, "completed", **result_payload)
-    except Exception as exc:
-        _write_process_job_status(job_id, "failed", error=str(exc))
+def _launch_process_job(job_id: str, input_path: Path, output_path: Path) -> None:
+    command = [
+        sys.executable,
+        "-m",
+        "activity_web.backend.process_runner",
+        job_id,
+        str(input_path),
+        str(output_path),
+    ]
+    subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
 
 
 @app.get("/")
@@ -288,9 +233,7 @@ def process_video():
 
     uploaded_file.save(input_path)
     _write_process_job_status(job_id, "queued")
-
-    worker = threading.Thread(target=_run_process_job, args=(job_id, input_path, output_path), daemon=True)
-    worker.start()
+    _launch_process_job(job_id, input_path, output_path)
 
     return jsonify(
         {
