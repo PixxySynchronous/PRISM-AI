@@ -6,8 +6,6 @@ from pathlib import Path
 from flask import Flask, jsonify, render_template, request, send_file
 from werkzeug.utils import secure_filename
 
-from .attendance_service import get_attendance_service
-from .pipeline_loader import get_pipeline
 from .config import (
     BACKEND_DIR,
     RUNTIME_DIR,
@@ -66,12 +64,16 @@ def health():
 
 @app.get("/api/attendance/roster")
 def attendance_roster():
+    from .attendance_service import get_attendance_service
+
     service = get_attendance_service()
     return jsonify({"ok": True, "students": service.list_students(), "attendance": service.list_attendance(limit=20)})
 
 
 @app.delete("/api/attendance/students/<student_id>")
 def attendance_delete_student(student_id: str):
+    from .attendance_service import get_attendance_service
+
     service = get_attendance_service()
     try:
         result = service.delete_student(student_id)
@@ -85,6 +87,8 @@ def attendance_delete_student(student_id: str):
 
 @app.post("/api/attendance/enroll")
 def attendance_enroll():
+    from .attendance_service import get_attendance_service
+
     uploaded_files = request.files.getlist("media")
     student_name = request.form.get("student_name", "").strip()
 
@@ -119,6 +123,8 @@ def attendance_enroll():
 
 @app.post("/api/attendance/mark")
 def attendance_mark():
+    from .attendance_service import get_attendance_service
+
     uploaded_file = request.files.get("photo")
     if uploaded_file is None or not uploaded_file.filename:
         return jsonify({"ok": False, "error": "Upload a classroom photo first."}), 400
@@ -144,6 +150,8 @@ def attendance_mark():
 @app.post("/api/process")
 def process_video():
     ensure_runtime_dirs()
+
+    from .pipeline_loader import get_pipeline
 
     uploaded_file = request.files.get("video")
     if uploaded_file is None or not uploaded_file.filename:

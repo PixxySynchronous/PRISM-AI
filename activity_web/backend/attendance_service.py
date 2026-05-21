@@ -9,7 +9,6 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-from insightface.app import FaceAnalysis
 
 
 BACKEND_DIR = Path(__file__).resolve().parent
@@ -59,8 +58,15 @@ class FaceSample:
 class AttendanceService:
     def __init__(self) -> None:
         ensure_attendance_dirs()
-        self.face_analysis = FaceAnalysis(name="buffalo_l", providers=["CPUExecutionProvider"])
-        self.face_analysis.prepare(ctx_id=0, det_size=(640, 640), det_thresh=0.5)
+        self._face_analysis = None
+
+    def _get_face_analysis(self):
+        if self._face_analysis is None:
+            from insightface.app import FaceAnalysis
+
+            self._face_analysis = FaceAnalysis(name="buffalo_l", providers=["CPUExecutionProvider"])
+            self._face_analysis.prepare(ctx_id=0, det_size=(640, 640), det_thresh=0.5)
+        return self._face_analysis
 
     def _read_store(self) -> dict:
         if not STORE_PATH.exists():
@@ -114,7 +120,7 @@ class AttendanceService:
         return self._sample_video_frames(media_path)
 
     def _detect_samples(self, frame: np.ndarray) -> list[FaceSample]:
-        faces = self.face_analysis.get(frame)
+        faces = self._get_face_analysis().get(frame)
         samples: list[FaceSample] = []
         for face in faces:
             embedding = getattr(face, "normed_embedding", None)
