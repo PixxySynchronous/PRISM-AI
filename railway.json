@@ -6,7 +6,7 @@
   },
   "deploy": {
     "startCommand": "gunicorn --bind 0.0.0.0:$PORT activity_web.backend.app:app",
-    "restartPolicyType": "unless_stopped",
+    "restartPolicyType": "ALWAYS",
     "healthchecks": {
       "web": {
         "enabled": true,
