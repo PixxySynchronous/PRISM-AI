@@ -5,7 +5,7 @@
     "dockerfile": "./Dockerfile"
   },
   "deploy": {
-    "startCommand": "gunicorn --bind 0.0.0.0:$PORT activity_web.backend.app:app",
+    "startCommand": "sh -c 'gunicorn --bind 0.0.0.0:${PORT:-8080} activity_web.backend.app:app'",
     "restartPolicyType": "ALWAYS",
     "healthchecks": {
       "web": {
