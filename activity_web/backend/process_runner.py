@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import json
+import contextlib
+import io
+import re
 import sys
 from pathlib import Path
 
 from .job_utils import (
     build_process_console_output,
     process_job_dir,
+    update_process_job_status,
     write_process_job_status,
 )
 from .pipeline_loader import get_pipeline
@@ -18,6 +22,52 @@ def artifact_url(job_id: str, kind: str) -> str:
 
 def clip_url(job_id: str, relative_path: str) -> str:
     return f"/api/jobs/{job_id}/clips/{relative_path}"
+
+
+PROGRESS_PATTERN = re.compile(r"Progress:\s*\[(?P<bar>[#\-\?]+)\]\s*(?P<current>\d+)/(?:\s*)?(?P<total>\d+)\s*\((?P<pct>[\d.]+)%\)")
+
+
+class ProgressCapture(io.TextIOBase):
+    def __init__(self, job_id: str):
+        super().__init__()
+        self.job_id = job_id
+        self.buffer = ""
+        self.last_progress_key: tuple[int, int, float] | None = None
+
+    def write(self, text: str) -> int:
+        if not text:
+            return 0
+        self.buffer += text
+        self._flush_progress_matches()
+        return len(text)
+
+    def flush(self) -> None:
+        self._flush_progress_matches()
+
+    def _flush_progress_matches(self) -> None:
+        matches = list(PROGRESS_PATTERN.finditer(self.buffer))
+        if not matches:
+            return
+
+        for match in matches:
+            current = int(match.group("current"))
+            total = int(match.group("total"))
+            percent = float(match.group("pct"))
+            progress_key = (current, total, percent)
+            if progress_key == self.last_progress_key:
+                continue
+            self.last_progress_key = progress_key
+            update_process_job_status(
+                self.job_id,
+                "running",
+                progress={
+                    "current_frame": current,
+                    "total_frames": total,
+                    "percent": percent,
+                },
+            )
+
+        self.buffer = ""
 
 
 def _build_clip_entries(job_id: str, summary: dict, output_path: Path) -> list[dict]:
@@ -52,7 +102,9 @@ def main() -> None:
     try:
         write_process_job_status(job_id, "running")
         pipeline = get_pipeline()
-        result = pipeline.process_video(video_path=input_path, output_dir=output_path, annotate=True)
+        progress_capture = ProgressCapture(job_id)
+        with contextlib.redirect_stdout(progress_capture), contextlib.redirect_stderr(progress_capture):
+            result = pipeline.process_video(video_path=input_path, output_dir=output_path, annotate=True)
 
         summary_path = Path(result["summary_path"])
         csv_path = Path(result["csv_path"])
@@ -65,6 +117,11 @@ def main() -> None:
             "completed",
             summary=summary,
             console_output=build_process_console_output(summary, result),
+            progress={
+                "current_frame": summary.get("total_frames", 0),
+                "total_frames": summary.get("total_frames", 0),
+                "percent": 100.0,
+            },
             paths={
                 "summary_json": str(summary_path),
                 "csv": str(csv_path),

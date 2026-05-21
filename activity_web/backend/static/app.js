@@ -14,6 +14,8 @@ const summaryLink = document.getElementById("summary-link");
 const csvLink = document.getElementById("csv-link");
 const annotatedLink = document.getElementById("annotated-link");
 const processOutput = document.getElementById("process-output");
+const activityProgressFill = document.getElementById("activity-progress-fill");
+const activityProgressText = document.getElementById("activity-progress-text");
 
 const enrollForm = document.getElementById("enroll-form");
 const studentNameInput = document.getElementById("student-name-input");
@@ -248,6 +250,7 @@ async function waitForProcessJob(statusUrl) {
 
     if (data.status === "queued" || data.status === "running") {
       statusBox.textContent = data.status === "queued" ? "Video job queued. Processing will start shortly..." : "Processing video. This can take a while...";
+      renderActivityProgress(data.progress || null);
       await delay(PROCESS_POLL_INTERVAL_MS);
       continue;
     }
@@ -257,6 +260,7 @@ async function waitForProcessJob(statusUrl) {
     }
 
     if (data.status === "completed") {
+      renderActivityProgress(data.progress || null);
       renderMetrics(data.summary, data.job_id);
       renderLinks(data.download_urls || {});
       renderGroupedStudents(data.clips || []);
@@ -287,6 +291,29 @@ function renderProcessOutput(consoleOutput) {
 
   processOutput.textContent = consoleOutput;
   processOutput.classList.remove("hidden");
+}
+
+function renderActivityProgress(progress) {
+  if (!activityProgressFill || !activityProgressText) {
+    return;
+  }
+
+  if (!progress || progress.current_frame === undefined || progress.total_frames === undefined) {
+    activityProgressFill.style.width = "0%";
+    activityProgressText.classList.add("hidden");
+    activityProgressText.textContent = "";
+    return;
+  }
+
+  const currentFrame = Number(progress.current_frame) || 0;
+  const totalFrames = Number(progress.total_frames) || 0;
+  const percent = Number(progress.percent);
+  const displayPercent = Number.isFinite(percent) ? percent : totalFrames > 0 ? (currentFrame / totalFrames) * 100 : 0;
+  const clampedPercent = Math.max(0, Math.min(100, displayPercent));
+
+  activityProgressFill.style.width = `${clampedPercent}%`;
+  activityProgressText.textContent = totalFrames > 0 ? `${currentFrame} / ${totalFrames} frames processed (${clampedPercent.toFixed(1)}%)` : `${currentFrame} frames processed`;
+  activityProgressText.classList.remove("hidden");
 }
 
 function renderMetrics(summary, jobId) {

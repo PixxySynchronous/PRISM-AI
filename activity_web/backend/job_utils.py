@@ -33,6 +33,20 @@ def write_process_job_status(job_id: str, status: str, **payload) -> None:
     status_path.write_text(json.dumps(data, indent=2))
 
 
+def update_process_job_status(job_id: str, status: str | None = None, **payload) -> dict:
+    current = read_process_job_status(job_id) or {"ok": True, "job_id": job_id}
+    if status is not None:
+        current["status"] = status
+    current.update(payload)
+    current["ok"] = True
+    current["job_id"] = job_id
+    current["updated_at"] = now_iso()
+    status_path = process_job_status_path(job_id)
+    status_path.parent.mkdir(parents=True, exist_ok=True)
+    status_path.write_text(json.dumps(current, indent=2))
+    return current
+
+
 def read_process_job_status(job_id: str) -> dict | None:
     status_path = process_job_status_path(job_id)
     if not status_path.exists():
