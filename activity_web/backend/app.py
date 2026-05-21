@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import uuid
 import threading
+import subprocess
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -92,14 +94,33 @@ def _read_process_job_status(job_id: str) -> dict | None:
 
 
 def _run_process_job(job_id: str, input_path: Path, output_path: Path) -> None:
-    from .pipeline_loader import get_pipeline
+    from .pipeline_loader import pipeline_script_path
 
     try:
         _write_process_job_status(job_id, "running")
-        pipeline = get_pipeline()
-        result = pipeline.process_video(video_path=input_path, output_dir=output_path, annotate=True)
+        command = [
+            sys.executable,
+            str(pipeline_script_path()),
+            "--video",
+            str(input_path),
+            "--output-dir",
+            str(output_path),
+        ]
+        completed_process = subprocess.run(command, capture_output=True, text=True)
+        if completed_process.returncode != 0:
+            stderr_text = (completed_process.stderr or "").strip()
+            stdout_text = (completed_process.stdout or "").strip()
+            message = stderr_text or stdout_text or f"Pipeline exited with status {completed_process.returncode}"
+            _write_process_job_status(job_id, "failed", error=message)
+            return
 
-        summary = result["summary"]
+        summary_path = next(output_path.glob("*_summary.json"), None)
+        csv_path = next(output_path.glob("*_per_student_predictions.csv"), None)
+        annotated_path = next(output_path.glob("*_sampled_annotated.mp4"), None)
+        if summary_path is None or not summary_path.exists():
+            raise RuntimeError("Pipeline finished but summary JSON was not created")
+
+        summary = json.loads(summary_path.read_text())
         job_output = process_job_dir(job_id)
         clip_entries = []
         for clip in summary.get("clips", []):
@@ -121,10 +142,10 @@ def _run_process_job(job_id: str, input_path: Path, output_path: Path) -> None:
         result_payload = {
             "summary": summary,
             "paths": {
-                "summary_json": result["summary_path"],
-                "csv": result["csv_path"],
-                "clip_dir": result["clip_dir"],
-                "annotated_video": result["annotated_video"],
+                "summary_json": str(summary_path),
+                "csv": str(csv_path) if csv_path is not None else None,
+                "clip_dir": str(output_path / "classified_clips" / Path(str(summary.get("video_path", ""))).stem),
+                "annotated_video": str(annotated_path) if annotated_path is not None else None,
             },
             "download_urls": {
                 "summary_json": artifact_url(job_id, "summary"),
