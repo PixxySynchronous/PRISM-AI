@@ -8,6 +8,7 @@ from .app import (
     artifact_url,
     clip_url,
     _now_iso,
+    _build_process_console_output,
     _write_process_job_status,
     process_job_dir,
 )
@@ -58,6 +59,7 @@ def main() -> None:
             job_id,
             "completed",
             summary=summary,
+            console_output=_build_process_console_output(summary, result),
             paths={
                 "summary_json": str(summary_path),
                 "csv": str(csv_path),

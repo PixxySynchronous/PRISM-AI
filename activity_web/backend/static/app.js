@@ -13,6 +13,7 @@ const emptyStateBox = document.getElementById("empty-state");
 const summaryLink = document.getElementById("summary-link");
 const csvLink = document.getElementById("csv-link");
 const annotatedLink = document.getElementById("annotated-link");
+const processOutput = document.getElementById("process-output");
 
 const enrollForm = document.getElementById("enroll-form");
 const studentNameInput = document.getElementById("student-name-input");
@@ -259,6 +260,7 @@ async function waitForProcessJob(statusUrl) {
       renderMetrics(data.summary, data.job_id);
       renderLinks(data.download_urls || {});
       renderGroupedStudents(data.clips || []);
+      renderProcessOutput(data.console_output || "");
       statusBox.textContent = "Done. Review the summary below.";
       resultsBox.classList.remove("hidden");
       return;
@@ -270,6 +272,21 @@ async function waitForProcessJob(statusUrl) {
 
 function delay(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+function renderProcessOutput(consoleOutput) {
+  if (!processOutput) {
+    return;
+  }
+
+  if (!consoleOutput) {
+    processOutput.classList.add("hidden");
+    processOutput.textContent = "";
+    return;
+  }
+
+  processOutput.textContent = consoleOutput;
+  processOutput.classList.remove("hidden");
 }
 
 function renderMetrics(summary, jobId) {
