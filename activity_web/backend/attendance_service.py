@@ -76,7 +76,7 @@ class AttendanceService:
             try:
                 from insightface.app import FaceAnalysis
 
-                model_name = os.environ.get("INSIGHTFACE_MODEL_NAME", "buffalo_l")
+                model_name = os.environ.get("INSIGHTFACE_MODEL_NAME", "buffalo_s")
                 self._face_analysis = FaceAnalysis(name=model_name, providers=["CPUExecutionProvider"])
                 self._face_analysis.prepare(ctx_id=0, det_size=(640, 640), det_thresh=0.5)
             except MemoryError as mem_err:

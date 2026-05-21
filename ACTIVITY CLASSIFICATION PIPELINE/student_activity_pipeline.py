@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import shutil
 from dataclasses import dataclass, field
@@ -55,6 +56,10 @@ def default_detector_weights() -> Path:
 
 def default_classifier_weights() -> Path:
     return resolve_repo_root() / "Activity monitoring" / "models" / "best_model" / "3dcnn_r3d18_weighted.pt"
+
+
+def default_face_model_name() -> str:
+    return os.environ.get("INSIGHTFACE_MODEL_NAME", "buffalo_s")
 
 
 class Video3DClassifier(nn.Module):
@@ -134,7 +139,7 @@ class StudentActivityPipeline:
         self.identity_threshold = identity_threshold
         self.device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
 
-        self.face_detector = FaceAnalysis(name="buffalo_l", providers=["CPUExecutionProvider"])
+        self.face_detector = FaceAnalysis(name=default_face_model_name(), providers=["CPUExecutionProvider"])
         self.face_detector.prepare(ctx_id=0, det_size=(self.face_det_size, self.face_det_size), det_thresh=self.face_det_thresh)
         detector_path = default_detector_weights()
         if not detector_path.exists():
