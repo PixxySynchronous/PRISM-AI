@@ -5,6 +5,7 @@ const activityForm = document.getElementById("upload-form");
 const videoInput = document.getElementById("video-input");
 const fileLabel = document.getElementById("file-label");
 const statusBox = document.getElementById("status");
+const activityProgress = document.getElementById("activity-progress");
 const resultsBox = document.getElementById("results");
 const metricsBox = document.getElementById("metrics");
 const studentGroupsBox = document.getElementById("student-groups");
@@ -18,12 +19,14 @@ const studentNameInput = document.getElementById("student-name-input");
 const enrollMediaInput = document.getElementById("enroll-media-input");
 const enrollMediaLabel = document.getElementById("enroll-media-label");
 const enrollStatus = document.getElementById("enroll-status");
+const enrollProgress = document.getElementById("enroll-progress");
 const enrollResult = document.getElementById("enroll-result");
 
 const markForm = document.getElementById("mark-form");
 const classroomPhotoInput = document.getElementById("classroom-photo-input");
 const classroomPhotoLabel = document.getElementById("classroom-photo-label");
 const markStatus = document.getElementById("mark-status");
+const markProgress = document.getElementById("mark-progress");
 const markResult = document.getElementById("mark-result");
 const markedPhotoPreview = document.getElementById("marked-photo-preview");
 const markedPhotoLink = document.getElementById("marked-photo-link");
@@ -31,6 +34,7 @@ const recognizedList = document.getElementById("recognized-list");
 const attendanceLogList = document.getElementById("attendance-log-list");
 const rosterList = document.getElementById("roster-list");
 const attendanceLogSummary = document.getElementById("attendance-log-summary");
+const rosterProgress = document.getElementById("roster-progress");
 
 function activateTab(tabId) {
   tabButtons.forEach((button) => {
@@ -56,6 +60,15 @@ function selectedFileText(files, fallbackText) {
     return files[0].name;
   }
   return `${files[0].name} + ${files.length - 1} more`;
+}
+
+function setProgress(progressElement, active) {
+  if (!progressElement) {
+    return;
+  }
+
+  progressElement.classList.toggle("hidden", !active);
+  progressElement.setAttribute("aria-hidden", String(!active));
 }
 
 videoInput.addEventListener("change", () => {
@@ -87,6 +100,7 @@ activityForm.addEventListener("submit", async (event) => {
   statusBox.classList.remove("error");
   statusBox.textContent = "Processing video. This can take a while...";
   submitButton.disabled = true;
+  setProgress(activityProgress, true);
 
   try {
     const response = await fetch("/api/process", {
@@ -109,6 +123,7 @@ activityForm.addEventListener("submit", async (event) => {
     statusBox.classList.add("error");
   } finally {
     submitButton.disabled = false;
+    setProgress(activityProgress, false);
   }
 });
 
@@ -136,6 +151,7 @@ enrollForm.addEventListener("submit", async (event) => {
   enrollStatus.classList.remove("error");
   enrollStatus.textContent = "Extracting embeddings and saving the student...";
   submitButton.disabled = true;
+  setProgress(rosterProgress, true);
 
   try {
     const response = await fetch("/api/attendance/enroll", {
@@ -151,12 +167,13 @@ enrollForm.addEventListener("submit", async (event) => {
     renderRoster(data.students || []);
     renderEnrollmentResult(data.student, data.media_samples || []);
     enrollStatus.textContent = `Enrolled ${data.student.name} successfully.`;
-    await refreshAttendanceSummary();
+    await refreshAttendanceSummary(enrollProgress);
   } catch (error) {
     enrollStatus.textContent = error.message;
     enrollStatus.classList.add("error");
   } finally {
     submitButton.disabled = false;
+    setProgress(enrollProgress, false);
   }
 });
 
@@ -176,6 +193,7 @@ markForm.addEventListener("submit", async (event) => {
   markStatus.classList.remove("error");
   markStatus.textContent = "Detecting faces and marking attendance...";
   submitButton.disabled = true;
+  setProgress(markProgress, true);
 
   try {
     const response = await fetch("/api/attendance/mark", {
@@ -188,22 +206,24 @@ markForm.addEventListener("submit", async (event) => {
       throw new Error(data.error || "Attendance marking failed.");
     }
 
-    renderMarkedPhoto(data.marked_url);
+    renderMarkedPhoto(data.marked_data_url || data.marked_url);
     renderRecognizedFaces(data.recognized || [], data.unknown_faces || 0);
     renderAttendanceLog(data.attendance_log || []);
     renderRoster(data.roster || []);
     markStatus.textContent = `Marked attendance for ${data.recognized.length} student${data.recognized.length === 1 ? "" : "s"}.`;
     markResult.classList.remove("hidden");
-    await refreshAttendanceSummary();
+    await refreshAttendanceSummary(markProgress);
   } catch (error) {
     markStatus.textContent = error.message;
     markStatus.classList.add("error");
   } finally {
     submitButton.disabled = false;
+    setProgress(markProgress, false);
   }
 });
 
-async function refreshAttendanceSummary() {
+async function refreshAttendanceSummary(progressElement = null) {
+  setProgress(progressElement, true);
   try {
     const response = await fetch("/api/attendance/roster");
     const data = await response.json();
@@ -213,6 +233,8 @@ async function refreshAttendanceSummary() {
     }
   } catch (error) {
     console.error(error);
+  } finally {
+    setProgress(progressElement, false);
   }
 }
 
@@ -368,6 +390,12 @@ function renderMarkedPhoto(url) {
 
   markResult.classList.remove("hidden");
   markedPhotoLink.href = url;
+
+  if (url.startsWith("data:")) {
+    markedPhotoPreview.src = url;
+    return;
+  }
+
   markedPhotoPreview.removeAttribute("src");
 
   fetch(url)
@@ -483,6 +511,7 @@ rosterList.addEventListener("click", async (event) => {
 
   button.disabled = true;
   button.textContent = "Deleting...";
+  setProgress(enrollProgress, true);
 
   try {
     const response = await fetch(`/api/attendance/students/${encodeURIComponent(studentId)}`, {
@@ -498,12 +527,13 @@ rosterList.addEventListener("click", async (event) => {
     renderAttendanceSummary(data.attendance || []);
     enrollStatus.classList.remove("error");
     markStatus.classList.remove("error");
-    await refreshAttendanceSummary();
+    await refreshAttendanceSummary(rosterProgress);
   } catch (error) {
     alert(error.message);
   } finally {
     button.disabled = false;
     button.textContent = "Delete";
+    setProgress(rosterProgress, false);
   }
 });
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import base64
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
@@ -378,11 +379,15 @@ class AttendanceService:
         marked_path = MARKED_DIR / marked_name
         cv2.imwrite(str(marked_path), marked_frame)
 
+        marked_bytes = marked_path.read_bytes()
+        marked_data_url = f"data:image/jpeg;base64,{base64.b64encode(marked_bytes).decode('ascii')}"
+
         return {
             "recognized": recognized,
             "unknown_faces": unknown_faces,
             "marked_path": str(marked_path),
             "marked_url": f"/api/attendance/artifacts/{marked_name}",
+            "marked_data_url": marked_data_url,
             "roster": self.list_students(),
             "attendance_log": self.list_attendance(limit=20),
         }
