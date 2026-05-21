@@ -1,0 +1,17 @@
+# Python caches and virtualenvs
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+
+# Editor and OS noise
+.DS_Store
+
+# App runtime data should not be baked into the image
+activity_web/runtime/
+activity_web/**/__pycache__/
+
+# Local logs and generated artifacts
+*.log
+*.tmp
