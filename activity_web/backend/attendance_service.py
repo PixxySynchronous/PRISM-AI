@@ -359,17 +359,17 @@ class AttendanceService:
                     }
                 )
 
-                cv2.rectangle(marked_frame, (x1, y1), (x2, y2), color, 2)
-                cv2.putText(
-                    marked_frame,
-                    label,
-                    (x1, max(20, y1 - 8)),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.55,
-                    color,
-                    2,
-                    cv2.LINE_AA,
-                )
+            cv2.rectangle(marked_frame, (x1, y1), (x2, y2), color, 2)
+            cv2.putText(
+                marked_frame,
+                label,
+                (x1, max(20, y1 - 8)),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.55,
+                color,
+                2,
+                cv2.LINE_AA,
+            )
 
         store["attendance"] = attendance_log
         self._write_store(store)

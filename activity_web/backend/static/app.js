@@ -204,7 +204,7 @@ markForm.addEventListener("submit", async (event) => {
       throw new Error(data.error || "Attendance marking failed.");
     }
 
-    renderMarkedPhoto(data.marked_data_url || data.marked_url);
+    renderMarkedPhoto(data.marked_data_url, data.marked_url);
     renderRecognizedFaces(data.recognized || [], data.unknown_faces || 0);
     renderAttendanceLog(data.attendance_log || []);
     renderRoster(data.roster || []);
@@ -416,23 +416,24 @@ function renderEnrollmentResult(student, mediaSamples) {
   `;
 }
 
-function renderMarkedPhoto(url) {
-  if (!url) {
+function renderMarkedPhoto(previewUrl, openUrl) {
+  if (!previewUrl && !openUrl) {
     markResult.classList.add("hidden");
     return;
   }
 
   markResult.classList.remove("hidden");
-  markedPhotoLink.href = url;
+  markedPhotoLink.href = openUrl || previewUrl;
 
-  if (url.startsWith("data:")) {
-    markedPhotoPreview.src = url;
+  if (previewUrl && previewUrl.startsWith("data:")) {
+    markedPhotoPreview.src = previewUrl;
     return;
   }
 
   markedPhotoPreview.removeAttribute("src");
 
-  fetch(url)
+  const sourceUrl = previewUrl || openUrl;
+  fetch(sourceUrl)
     .then((response) => {
       if (!response.ok) {
         throw new Error(`Unable to load annotated photo (${response.status})`);
